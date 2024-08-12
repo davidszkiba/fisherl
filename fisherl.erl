@@ -32,10 +32,21 @@ lbinom(N, K) ->
 
 %% Hypergeometric distribution
 %%
+%% @see https://en.wikipedia.org/wiki/Hypergeometric_distribution
+%%
 %%  n11  n12  | n1_
 %%  n21  n22  | n2_
 %% -----------+----
 %%  n_1  n_2  | n
+%%
+%%  Here:
+%%  N is the population size
+%%  N_1 is the number of draws
+%%  N1_ is the number of success states in the population
+%%  N11 is the number of observed successes
+%%
+%%  So this gives the probability of drawing N_1 times from an N with N_1
+%%  success states and observing exactly N11 successes.
 %%
 hypergeo(N11, N1_, N_1, N) ->
     math:exp(lbinom(N1_, N11) + lbinom(N - N1_, N_1 - N11) - lbinom(N, N_1)).
@@ -43,6 +54,7 @@ hypergeo(N11, N1_, N_1, N) ->
 %% Incremental version of hypergenometric distribution.
 hypergeo_acc(N11, N1_, N_1, N, {_HGN11, _HGN1_, _HGN_1, _HGN}, _HGP) when N1_ > 0;N_1 > 0;N > 0 ->
     {{N11, N1_, N_1, N}, hypergeo(N11, N1_, N_1, N)};
+% If we are here, one of N1_, N_1 or N is 0.
 hypergeo_acc(N11, _N1_, _N_1, _N, {HGN11, HGN1_, HGN_1, HGN}, HGP) when ((N11 rem 11) > 0) and (N11 + HGN - HGN1_ - HGN_1 > 0) and (N11 == (HGN11 + 1)) ->
     HGP1 = HGP * (HGN1_ - HGN11) / N11
     * (HGN_1 - HGN11) / (N11 + HGN - HGN1_ - HGN_1),
