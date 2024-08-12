@@ -1,25 +1,12 @@
--module(funs).
-% -export([kf_lgamma/1]).
-% -export([p_kf_gammap/2]).
-% -export([p_kf_gammaq/2]).
--export([hypergeo/4]).
--export([hypergeo_acc/6]).
+-module(fisherl).
 -export([fisher_exact/4]).
 
-%% temporary
--export([
-         sumleft/6,
-         sumright/5,
-         adjustleft/4,
-         adjustright/4
-        ]).
-
--define(KF_GAMMA_EPS, 1.0e-14).
--define(KF_TINY, 1.0e-290).
+% -define(KF_GAMMA_EPS, 1.0e-14).
+% -define(KF_TINY, 1.0e-290).
 
 %-export([kf_betai_aux/3]).
 
-%% Everyting here is inspired by https://github.com/gatoravi/fisher-exact
+%% Everyting here is ported from https://github.com/gatoravi/fisher-exact
 
 %% Log gamma function
 %% \log{\Gamma(z)}
@@ -86,7 +73,7 @@ kf_lgamma(Z) ->
 %     %	}
 %         io:format("F: ~f~n", [F1]),
 %         math:exp(S * math:log(Z) - Z - kf_lgamma(S) - math:log(F1)).
-%     
+%
 %     p_modified_lentz(J, F, _C, _S, _Z, _D, _SmallDDiff) when J >= 100 ->
 %         io:format("Quit because J limit"),
 %         F;
@@ -105,13 +92,13 @@ kf_lgamma(Z) ->
 %         F1 = F * SmallD,
 %         SmallDDiff = math:abs(SmallD - 1.0),
 %         p_modified_lentz(J + 1, F1, C, S, Z, D3, SmallDDiff).
-%     
+%
 %     kf_gammap(S, Z) when (Z =< 1.0) or (Z < S) ->
 %         p_kf_gammap(S, Z);
 %     kf_gammap(S, Z) ->
 %         1.0 - p_kf_gammaq(S, Z).
-%     
-%     
+%
+%
 %     kf_gammaq(S, Z) when (Z =< 1.0) or (Z < S) ->
 %         1.0 - p_kf_gammap(S, Z);
 %     kf_gammaq(S, Z) ->
@@ -165,7 +152,7 @@ kf_lgamma(Z) ->
 %         SmallD = C2 * D3,
 %         SmallF1 = SmallF * SmallD,
 %         p_lentz_continued_fraction(J + 1, A, B, X, SmallF1, C2, D3, math:abs(SmallD - 1.0)).
-%     
+%
 %     p_calc_aa(J, A, B, X, M) when J rem 2 == 1 ->
 %     -(A + M) * (A + B + M) * X / ((A + 2*M) * (A + 2*M + 1));
 %     p_calc_aa(_J, A, B, X, M) ->
@@ -188,79 +175,45 @@ lbinom(N, K) ->
 hypergeo(N11, N1_, N_1, N) ->
     math:exp(lbinom(N1_, N11) + lbinom(N - N1_, N_1 - N11) - lbinom(N, N_1)).
 
-%% incremental version of hypergenometric distribution
-%% typedef struct {
-%%     int n11, n1_, n_1, n;
-%%     double p;
-%% } hgacc_t;
-%%
+%% Incremental version of hypergenometric distribution.
 hypergeo_acc(N11, N1_, N_1, N, {_HGN11, _HGN1_, _HGN_1, _HGN}, _HGP) when N1_ > 0;N_1 > 0;N > 0 ->
-    %io:format("A~n"),
     {{N11, N1_, N_1, N}, hypergeo(N11, N1_, N_1, N)};
 hypergeo_acc(N11, _N1_, _N_1, _N, {HGN11, HGN1_, HGN_1, HGN}, HGP) when ((N11 rem 11) > 0) and (N11 + HGN - HGN1_ - HGN_1 > 0) and (N11 == (HGN11 + 1)) ->
-    %io:format("B~n"),
     HGP1 = HGP * (HGN1_ - HGN11) / N11
     * (HGN_1 - HGN11) / (N11 + HGN - HGN1_ - HGN_1),
     {{N11, HGN1_, HGN_1, HGN}, HGP1};
 hypergeo_acc(N11, _N1_, _N_1, _N, {HGN11, HGN1_, HGN_1, HGN}, HGP) when (N11 rem 11 > 0) and (N11 + HGN - HGN1_ - HGN_1 > 0) and (N11 == (HGN11 - 1)) ->
-    %io:format("C~n"),
     HGP1 = HGP * HGN11 / (HGN1_ - N11)
     * (HGN11 + HGN - HGN1_ - HGN_1) / (HGN_1 - N11),
     {{N11, HGN1_, HGN_1, HGN}, HGP1};
 hypergeo_acc(N11, _N1_, _N_1, _N, {_HGN11, HGN1_, HGN_1, HGN}, _HGP) ->
-    %io:format("D: ~p, ~p, ~p, ~p~n", [N11, HGN1_, HGN_1, HGN]),
     {{N11, HGN1_, HGN_1, HGN}, hypergeo(N11, HGN1_, HGN_1, HGN)}.
 
 fisher_exact(N11, N12, N21, N22) ->
-    % int i, j, max, min;
-    % double p, q, left, right;
-    % hgacc_t aux;
-    % int n1_, n_1, n;
-
     N1_ = N11 + N12,
     N_1 = N11 + N21,
     N = N11 + N12 + N21 + N22,
-    Max = min(N_1, N1_), %% max n11, for right tail % Yeah, its the lower of the two values.
-    io:format("~p~n", [[N11, N12, N21, N22, N1_, N_1, N, Max]]),
+    Max = min(N_1, N1_), % Max n11, for right tail % Yeah, "Max" is the lower of the two values.
     Min = N1_ + N_1 - N, %math:min(N_1, N1_), % n1_ + n_1 - n;    // not sure why n11-n22 is used instead of min(n_1,n1_)
-    Min1 = max(Min, 0),% min n11, for left tail
-    % *two = *_left = *_right = 1.;
-    % if (min == max) return 1.; // no need to do test
-    if Min1 =:= Max ->
-           1;
-       true ->
-           % q = hypergeo_acc(n11, n1_, n_1, n, &aux); // the probability of the current table
-           io:format("N11: ~p N1_: ~p N_1: ~p N: ~p~n", [N11, N1_, N_1, N]),
-           {Aux, Q} = hypergeo_acc(N11, N1_, N_1, N, {0, 0, 0, 0}, 0),
-           io:format("Q: ~f~n", [Q]),
-           %  left tail
-           {Aux1, P} = hypergeo_acc(Min1, 0, 0, 0, Aux, Q),
-           io:format("P: ~f~n", [P]),
-    % for (left = 0., i = min + 1; p < 0.99999999 * q && i<=max; ++i) // loop until underflow
-    %     left += p, p = hypergeo_acc(i, 0, 0, 0, &aux);
-          {Left, P1, I, Aux2} = sumleft(0.0, Min1 + 1, Aux1, P, Q, Max),
-          io:format("Left: ~p P: ~f~n", [Left, P1]),
-          {Left2, I2} = adjustleft(P1, Q, Left, I - 1),
-          io:format("Left2: ~p P: ~f~n", [Left2, P1]),
-    % // right tail
-          io:format("Aux2: ~p Max: ~p~n", [Aux2, Max]),
-          {Aux3, PRight} = hypergeo_acc(Max, 0, 0, 0, Aux2, P1),
-          {Right, PRight1, J, _Aux4} = sumright(0.0, Max - 1, Aux3, PRight, Q),
-          {Right2, J2} = adjustright(PRight1, Q, Right, J + 1),
-          io:format("Right: ~p P: ~f~n", [Right2, PRight1]),
-    % ++j;
-    % if (p < 1.00000001 * q) right += p;
-    % else ++j;
-    % // two-tail
-    % *two = left + right;
-    % if (*two > 1.) *two = 1.;
-    Two = gettwo(Left2, Right2),
-    % // adjust left and right
-    % if (abs(i - n11) < abs(j - n11)) right = 1. - left + q;
-    % else left = 1.0 - right + q;
-    {Left3, Right3} = adjust_left_right(Left2, Right2, I2, J2, N11, Q),
-    {Left3, Right3, Two}
-    end.
+    Min1 = max(Min, 0),% Min n11, for left tail
+	if Min1 =:= Max ->
+		   % No need to do test.
+		   1;
+	   true ->
+		   % The probability of the current table.
+		   {Aux, Q} = hypergeo_acc(N11, N1_, N_1, N, {0, 0, 0, 0}, 0),
+		   %  Left tail.
+		   {Aux1, P} = hypergeo_acc(Min1, 0, 0, 0, Aux, Q),
+		   {Left, P1, I, Aux2} = sumleft(0.0, Min1 + 1, Aux1, P, Q, Max),
+		   {Left2, I2} = adjustleft(P1, Q, Left, I - 1),
+		   % Right tail.
+		   {Aux3, PRight} = hypergeo_acc(Max, 0, 0, 0, Aux2, P1),
+		   {Right, PRight1, J, _Aux4} = sumright(0.0, Max - 1, Aux3, PRight, Q),
+		   {Right2, J2} = adjustright(PRight1, Q, Right, J + 1),
+		   Two = gettwo(Left2, Right2),
+		   {Left3, Right3} = adjust_left_right(Left2, Right2, I2, J2, N11, Q),
+		   {Left3, Right3, Two}
+	end.
 
 % for (left = 0., i = min + 1; p < 0.99999999 * q && i<=max; ++i) // loop until underflow
 %     left += p, p = hypergeo_acc(i, 0, 0, 0, &aux);
@@ -306,7 +259,7 @@ gettwo(Left, Right) ->
 adjust_left_right(Left, _, I, J, N11, Q) when abs(I - N11) < abs(J - N11) ->
     Right1 = 1.0 - Left + Q,
     {Left, Right1};
-adjust_left_right(Left, Right, _, _, _, Q) ->
+adjust_left_right(_Left, Right, _, _, _, Q) ->
     {1.0 - Right + Q, Right}.
 
 
